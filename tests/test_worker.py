@@ -9,7 +9,6 @@ try:
     import numpy as np
 
     from voice_worker.gate import AWAIT_CONFIRM, FIRE, IGNORED, CommandGate
-    from voice_worker.names import expand_pattern
     from voice_worker.resample import Decimator, to_pcm16
 except ImportError:  # inside x32-recorder's Django test run: no numpy there, and not on the path
     raise unittest.SkipTest('worker tests run standalone from the plugin folder (need numpy)')
@@ -87,18 +86,6 @@ class GateTests(unittest.TestCase):
         self.assertEqual(self.gate.feed('stop'), IGNORED)
         self.now = 11.0
         self.assertEqual(self.gate.feed('stop'), FIRE)
-
-
-class NamePatternTests(unittest.TestCase):
-    def test_builtins_and_wildcards(self):
-        now = datetime.datetime(2026, 10, 11, 19, 5)  # a Sunday
-        name = expand_pattern('{Probe} {Datum} {Wochentag} {Uhrzeit} {Vorlage} {Ort}', 'PhoeniX',
-                              custom_wildcards=[{'token': 'Ort', 'value': 'Bandraum'}],
-                              global_wildcards=[{'token': 'Probe', 'value': 'Probe'}], now=now)
-        self.assertEqual(name, 'Probe 26-10-11 Sonntag 19-05 PhoeniX Bandraum')
-
-    def test_empty_pattern(self):
-        self.assertEqual(expand_pattern('', 'X'), '')
 
 
 if __name__ == '__main__':

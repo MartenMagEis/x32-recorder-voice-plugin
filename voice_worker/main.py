@@ -21,7 +21,6 @@ import numpy as np
 
 from .detector import CommandDetector
 from .gate import AWAIT_CONFIRM, FIRE, CommandGate
-from .names import expand_pattern
 from .recorder_api import ApiError, RecorderApi
 from .resample import Decimator, to_pcm16
 
@@ -184,39 +183,9 @@ class Worker:
         return f'Marker: {names}'
 
     def _start_recording(self):
-        """Same request RecordingControls.vue sends for the selected template: its channels
-        (capped to what the device offers, stereo counting double), the device, and the
-        template's name pattern expanded."""
-        device_index = self.target['device_index'] if self.target else None
-        if device_index is None:
-            device_index = self._idle_device()
-        if device_index is None:
-            return 'Fehler: kein Audiogerät bekannt'
-        device = next((d for d in self.api.get('/audiodevice/') if d.get('index') == device_index), None)
-        if device is None:
-            return 'Fehler: Audiogerät nicht verfügbar'
-        template = self.target['template']
-        channels = sorted(self.api.get(f"/template-channels/?template={template['id']}"),
-                          key=lambda c: c['channel_no'])
-        capacity = device.get('input_channel_count') or 0
-        picked, used = [], 0
-        for ch in channels:
-            cost = 2 if ch.get('stereo') else 1
-            if capacity and used + cost > capacity:
-                continue
-            picked.append(ch['channel_no'])
-            used += cost
-        global_wildcards = self.api.get('/recorder-settings/').get('global_wildcards') or []
-        name = expand_pattern(template.get('default_name_pattern'), template['name'],
-                              template.get('custom_wildcards') or [], global_wildcards)
-        rec = self.api.post('/recordings/start/', {
-            'audiodevice_index': device_index,
-            'audiodevice_name': device.get('name', ''),
-            'audiodevice_serial': device.get('usb_serial'),
-            'channels': picked,
-            'name': name,
-            'template_id': template['id'],
-        })
+        """x32-recorder picks channels, device and name exactly like its UI would for the template
+        (recordings/start_from_template/) - the worker only says which template."""
+        rec = self.api.post('/recordings/start_from_template/', {'template_id': self.target['template_id']})
         return f"Aufnahme gestartet: {rec.get('name') or '(ohne Name)'}"
 
     # --- audio -------------------------------------------------------------------------------

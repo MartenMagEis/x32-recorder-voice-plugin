@@ -62,7 +62,7 @@ verschieden, keine Wörter, die in euren Songtexten vorkommen.
 - **Worker** (`voice_worker/`, eigener Prozess mit niedriger Priorität, ohne Django): fordert beim
   Controller den Sprach-Kanal per Audio-Abgriff an (`/api/audio-taps/`), taktet von 48 auf 16 kHz
   herunter (mit Tiefpass), lässt die Modelle laufen und löst die Befehle über die REST-API aus
-  (`/recordings/start/`, `/stop/`, `/marker_action/`).
+  (`/recordings/start_from_template/`, `/stop/`, `/marker_action/`).
 
 ## Tests
 
