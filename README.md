@@ -28,8 +28,9 @@ gesprochen wurde.
 2. Pro Befehl ein Wake-Word-Modell wählen und **Aktiviert** einschalten. Beim ersten Aktivieren
    installiert das Plugin selbst eine eigene Python-Umgebung (`.venv` im Plugin-Ordner, ca. 60 MB,
    braucht einmalig Internet) mit numpy und pymicro-wakeword - bewusst getrennt von x32-recorder,
-   dessen `uv sync` sie sonst bei jedem Update wieder entfernen würde. Der Knopf **"Erkennung
-   installieren"** aktualisiert sie bzw. wiederholt eine fehlgeschlagene Installation.
+   dessen `uv sync` sie sonst bei jedem Update wieder entfernen würde. Der Knopf **"Erkennung neu
+   installieren / aktualisieren"** ist nur für ein Update oder nach einer fehlgeschlagenen
+   Installation nötig.
 3. Im **Vorlagen-Editor** bei den gewünschten Vorlagen "Sprachsteuerung" einschalten und den
    **Sprach-Kanal** wählen (das Mikrofon, in das die Befehle gesprochen werden - bei Stereo-Paaren
    ist jede Seite einzeln wählbar).

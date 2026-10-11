@@ -60,8 +60,10 @@ def get_config_schema():
     fields += [
         {"name": "install_status", "label": "Erkennung (eigene Python-Umgebung)", "type": "string",
          "help_text": "numpy + pymicro-wakeword, getrennt von x32-recorder installiert.", "readonly": True},
-        {"name": "install", "label": "Erkennung installieren / aktualisieren", "type": "action",
-         "help_text": "", "readonly": False},
+        {"name": "install", "label": "Erkennung neu installieren / aktualisieren", "type": "action",
+         "help_text": "Normalerweise nicht nötig - beim ersten Aktivieren wird automatisch installiert. "
+                      "Nur für ein Update der Erkennung oder nach einer fehlgeschlagenen Installation.",
+         "readonly": False},
         {"name": "worker_status", "label": "Status", "type": "string", "help_text": "", "readonly": True},
         {"name": "recent", "label": "Letzte Erkennungen", "type": "string", "help_text": "", "readonly": True},
     ]
