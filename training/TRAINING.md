@@ -26,10 +26,12 @@ Dann zu Claude sagen:
 
 > Lies `training/TRAINING.md` und arbeite den Abschnitt "Auftrag für Claude Code" ab.
 
-## Vorher: Phrasen festlegen
+## Die Phrasen (festgelegt 2026-10-12)
 
-Pro Befehl eine Phrase, alle mit demselben ungewöhnlichen Vorwort, die Befehlswörter klanglich
-möglichst verschieden (andere Vokale, andere Anlaute, verschiedene Silbenzahl). Empfehlung:
+Pro Befehl eine Phrase, alle mit demselben ungewöhnlichen Vorwort "Tape deck" (kommt in Songtexten
+und Gesprächen praktisch nie vor), die Befehlswörter klanglich möglichst verschieden (andere Vokale,
+andere Anlaute, verschiedene Silbenzahl). Bewusst **nicht** "start"/"stop" (zu ähnlich) und nicht
+"end" (würde man im Eifer für das Song-Ende sagen und damit die ganze Aufnahme beenden):
 
 | Befehl | Phrase | Modellname |
 |---|---|---|
@@ -37,8 +39,6 @@ möglichst verschieden (andere Vokale, andere Anlaute, verschiedene Silbenzahl).
 | Aufnahme stoppen | "Tape deck, finish" | `tapedeck_finish` |
 | Marker | "Tape deck, marker" | `tapedeck_marker` |
 | Nächster Song | "Tape deck, next song" | `tapedeck_next_song` |
-
-(Steht noch nicht endgültig fest - Claude fragt vor dem Training danach.)
 
 ## Eigene Aufnahmen der Band (empfohlen)
 
@@ -88,8 +88,8 @@ du lange Läufe startest.
 
 1. **Umgebung prüfen:** `nvidia-smi` in WSL, freier Platz (>= 25 GB), Python-Version. TensorFlow muss
    die GPU sehen - das prüfen, bevor irgendein langer Lauf startet.
-2. **Phrasen klären:** die Tabelle oben dem Nutzer zeigen und die endgültigen Phrasen + Modellnamen
-   bestätigen lassen. Englische Schreibweise (die Trainingsstimmen sind englisch).
+2. **Phrasen:** stehen fest (Tabelle oben). Englische Schreibweise, die Trainingsstimmen sind
+   englisch; als Varianten z.B. "Tape deck record", "Tapedeck, record!" mit aufnehmen.
 3. **Trainer einrichten:** einen aktuellen, gepflegten microWakeWord-Trainer wählen, z.B.
    `interkelstar/microwakeword-trainer` (konfigurationsgesteuert, unterstützt eigene Negativbeispiele
    in `training/output/<modell>/user_negatives/`) oder das offizielle Notebook aus
