@@ -1,0 +1,4 @@
+# Installed into the plugin's own .venv by the "Erkennung installieren" button (see supervisor.py) -
+# never into x32-recorder's venv.
+numpy
+pymicro-wakeword

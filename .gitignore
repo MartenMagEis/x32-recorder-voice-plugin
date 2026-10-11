@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+status.json
+status.json.tmp
+worker.log
+worker.pid
+install.log

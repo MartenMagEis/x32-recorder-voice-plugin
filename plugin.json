@@ -1,0 +1,5 @@
+{
+  "kind": "django_app",
+  "display_name": "Sprachsteuerung",
+  "description": "Aufnahme starten/stoppen, Marker setzen und zum nächsten Song springen per Sprachbefehl (lokal, microWakeWord)."
+}
