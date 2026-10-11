@@ -24,14 +24,13 @@ gesprochen wurde.
 ## Einrichten
 
 1. In x32-recorder unter **Einstellungen → Plugins** die GitHub-URL dieses Repos hinzufügen und
-   aktivieren, Dienste neu starten.
-2. Einmalig die Datenbank-Tabellen anlegen (auf dem Pi, im x32-recorder-Ordner):
-   `uv run python x32recorder/manage.py migrate`
-3. In den Plugin-Einstellungen **"Erkennung installieren"** klicken. Das legt eine eigene
-   Python-Umgebung (`.venv` im Plugin-Ordner) mit numpy und pymicro-wakeword an - bewusst getrennt
-   von x32-recorder, dessen `uv sync` sie sonst bei jedem Update wieder entfernen würde.
-4. Pro Befehl ein Wake-Word-Modell wählen und **Aktiviert** einschalten.
-5. Im **Vorlagen-Editor** bei den gewünschten Vorlagen "Sprachsteuerung" einschalten und den
+   aktivieren, Dienste neu starten (die Datenbank-Tabellen legt der Neustart selbst an).
+2. Pro Befehl ein Wake-Word-Modell wählen und **Aktiviert** einschalten. Beim ersten Aktivieren
+   installiert das Plugin selbst eine eigene Python-Umgebung (`.venv` im Plugin-Ordner, ca. 60 MB,
+   braucht einmalig Internet) mit numpy und pymicro-wakeword - bewusst getrennt von x32-recorder,
+   dessen `uv sync` sie sonst bei jedem Update wieder entfernen würde. Der Knopf **"Erkennung
+   installieren"** aktualisiert sie bzw. wiederholt eine fehlgeschlagene Installation.
+3. Im **Vorlagen-Editor** bei den gewünschten Vorlagen "Sprachsteuerung" einschalten und den
    **Sprach-Kanal** wählen (das Mikrofon, in das die Befehle gesprochen werden - bei Stereo-Paaren
    ist jede Seite einzeln wählbar).
 

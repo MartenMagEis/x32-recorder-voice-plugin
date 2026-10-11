@@ -176,7 +176,10 @@ def run_supervisor():
     while True:
         try:
             close_old_connections()
-            want = VoiceSettings.get_solo().enabled and is_installed()
+            enabled = VoiceSettings.get_solo().enabled
+            if enabled and not is_installed() and _install["state"] == "idle":
+                start_install()  # first enable - no extra click needed (a failed attempt waits for the button)
+            want = enabled and is_installed()
             now = time.monotonic()
             if proc is not None and proc.poll() is not None:
                 logger.warning("Voice worker exited with %s", proc.returncode)
