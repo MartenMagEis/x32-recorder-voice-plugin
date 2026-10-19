@@ -28,6 +28,9 @@ logger = logging.getLogger('voice_worker')
 
 COMMANDS = ('start', 'stop', 'marker', 'next')
 REFRESH_INTERVAL_S = 3.0
+# How often the idle device is looked up again by name. Each lookup makes the web process
+# re-initialize PortAudio, far too heavy for every refresh.
+DEVICE_LOOKUP_INTERVAL_S = 30.0
 TAP_HEADER = 16
 MAX_RECENT = 10
 
@@ -59,6 +62,9 @@ class Worker:
         self.error = ''
         self.last_seq = None
         self.refresh_due = 0.0
+        self.idle_device_name = None
+        self.idle_device_index = None
+        self.idle_lookup_due = 0.0
 
     # --- status ------------------------------------------------------------------------------
 
@@ -146,14 +152,31 @@ class Worker:
 
     def _idle_device(self):
         """Index of the interface the last recording used - resolved by name, since PortAudio
-        indices can change when devices are re-plugged."""
+        indices can change when devices are re-plugged.
+
+        The device list only shows an interface whose input can be opened, so it's missing for
+        exactly as long as the controller listens on it for us. Forgetting the index then made the
+        tap flip between the device and none every few seconds, and the controller open and close
+        the interface just as often (found live 2026-10-19) - so the last index found for the same
+        name is kept until a lookup finds it somewhere else."""
         latest = self.api.latest_recording()
-        if not latest or not latest.get('audiodevice_name'):
+        name = (latest or {}).get('audiodevice_name')
+        if not name:
             return None
-        for dev in self.api.get('/audiodevice/'):
-            if dev.get('name') == latest['audiodevice_name']:
-                return dev.get('index')
-        return None
+        now = time.monotonic()
+        if name == self.idle_device_name and now < self.idle_lookup_due:
+            return self.idle_device_index
+        self.idle_lookup_due = now + DEVICE_LOOKUP_INTERVAL_S
+        try:
+            devices = self.api.get('/audiodevice/')
+        except ApiError as e:
+            logger.warning('device lookup failed: %s', e)
+            devices = []
+        index = next((d.get('index') for d in devices if d.get('name') == name), None)
+        if index is not None or name != self.idle_device_name:
+            self.idle_device_index = index
+        self.idle_device_name = name
+        return self.idle_device_index
 
     def _release_tap(self):
         try:

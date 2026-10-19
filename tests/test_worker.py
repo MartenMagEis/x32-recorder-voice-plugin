@@ -88,5 +88,56 @@ class GateTests(unittest.TestCase):
         self.assertEqual(self.gate.feed('stop'), FIRE)
 
 
+class FakeApi:
+    def __init__(self, devices):
+        self.devices = devices
+        self.lookups = 0
+
+    def latest_recording(self):
+        return {'audiodevice_name': 'X-USB'}
+
+    def get(self, path):
+        assert path == '/audiodevice/'
+        self.lookups += 1
+        return self.devices
+
+
+class IdleDeviceTests(unittest.TestCase):
+    def setUp(self):
+        from voice_worker import main
+        self.main = main
+        self.api = FakeApi([{'name': 'X-USB', 'index': 1}])
+        self.worker = main.Worker(self.api, 'voice', '.', 'status.json')
+
+    def expire(self):
+        self.worker.idle_lookup_due = 0.0
+
+    def test_lookup_is_cached_between_refreshes(self):
+        self.assertEqual(self.worker._idle_device(), 1)
+        self.assertEqual(self.worker._idle_device(), 1)
+        self.assertEqual(self.api.lookups, 1)
+
+    def test_keeps_index_while_device_is_busy_and_unlisted(self):
+        self.worker._idle_device()
+        self.api.devices = []  # controller holds the input open -> not in the list
+        self.expire()
+        self.assertEqual(self.worker._idle_device(), 1)
+
+    def test_follows_device_to_a_new_index(self):
+        self.worker._idle_device()
+        self.api.devices = [{'name': 'X-USB', 'index': 3}]
+        self.expire()
+        self.assertEqual(self.worker._idle_device(), 3)
+
+    def test_failed_lookup_keeps_index(self):
+        self.worker._idle_device()
+
+        def fail(path):
+            raise self.main.ApiError('PortAudio not initialized')
+        self.api.get = fail
+        self.expire()
+        self.assertEqual(self.worker._idle_device(), 1)
+
+
 if __name__ == '__main__':
     unittest.main()
