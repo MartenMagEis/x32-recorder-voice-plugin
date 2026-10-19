@@ -31,10 +31,11 @@ class VoiceSettings(models.Model):
         "Zusammenfassen (ms)", default=1500,
         help_text="Erkennungen desselben Befehls innerhalb dieser Zeit zählen als ein Wort."
     )
-    marker_offset_ms = models.IntegerField(
-        "Marker zurückdatieren (ms)", default=1000,
-        help_text="Ein Wort wird erst erkannt, nachdem es gesprochen wurde - um so viel wird der "
-                   "Marker vorverlegt."
+    announcement_ms = models.IntegerField(
+        "Länge der Ansage (ms)", default=2500,
+        help_text="Ein Befehl wird erst erkannt, wenn er ausgesprochen ist. Song-Ende und "
+                   "Sondermarker werden um so viel vorverlegt, der Song-Start bleibt nach der Ansage - "
+                   "so ist die Ansage auf keinem ausgeschnittenen Song."
     )
     udp_port = models.IntegerField("UDP-Port", default=47100,
                                    help_text="Lokaler Port, auf dem der Controller das Audio schickt.")

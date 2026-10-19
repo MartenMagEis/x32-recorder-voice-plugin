@@ -165,7 +165,7 @@ class Worker:
 
     def act(self, command):
         recording = self.target['recording'] if self.target else None
-        offset = self.config.get('marker_offset_ms', 1000) / 1000.0
+        announcement = self.config.get('announcement_ms', 2500) / 1000.0
         if command == 'start':
             if recording:
                 return 'ignoriert: Aufnahme läuft schon'
@@ -177,7 +177,7 @@ class Worker:
             return 'Aufnahme gestoppt'
         action = 'toggle' if command == 'marker' else 'next'
         result = self.api.post(f"/recordings/{recording['id']}/marker_action/",
-                               {'action': action, 'offset_seconds': offset})
+                               {'action': action, 'announcement_seconds': announcement})
         names = ', '.join(('Start ' + (m['name'] or '(ohne Name)')) if m['marker_type'] == 1 else 'Ende'
                           for m in result['created'])
         return f'Marker: {names}'

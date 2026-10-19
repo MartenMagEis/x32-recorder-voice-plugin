@@ -14,7 +14,7 @@ FIELDS = [
     "stop_needs_confirmation",
     "confirm_window_s",
     "dedup_ms",
-    "marker_offset_ms",
+    "announcement_ms",
     "udp_port",
 ]
 
