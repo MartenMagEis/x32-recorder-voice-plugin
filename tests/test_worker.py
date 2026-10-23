@@ -207,3 +207,42 @@ class ChannelTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+try:
+    from voice_worker.detector import WARMUP_STEPS, CommandDetector
+except ImportError:  # pymicro-wakeword not installed here
+    CommandDetector = None
+
+
+class AlwaysOn:
+    """Stand-in model that is certain on every feature step."""
+    probability_cutoff = 0.5
+
+    def process_streaming_prob(self, features):
+        return 1.0
+
+    def reset(self):
+        pass
+
+
+@unittest.skipIf(CommandDetector is None, 'needs pymicro-wakeword')
+class DetectorWarmupTests(unittest.TestCase):
+    def detector(self):
+        d = CommandDetector({}, wakewords_dir='')
+        d.models = {'marker': AlwaysOn()}
+        return d
+
+    def pcm(self, seconds):
+        return to_pcm16(Decimator().process(tone(440, seconds)))
+
+    def test_no_hits_until_the_frontend_has_settled(self):
+        d = self.detector()
+        self.assertEqual(d.process(self.pcm(WARMUP_STEPS / 100 - 0.2)), [])
+        self.assertTrue(any(hit for _, _, hit in d.process(self.pcm(1.0))))
+
+    def test_reset_starts_the_warmup_again(self):
+        d = self.detector()
+        d.process(self.pcm(WARMUP_STEPS / 100 + 1.0))
+        d.reset()
+        self.assertEqual(d.process(self.pcm(WARMUP_STEPS / 100 - 0.2)), [])
