@@ -1,0 +1,217 @@
+diff --git a/train_mww.py b/train_mww.py
+index a8f4862..3cc5cdc 100644
+--- a/train_mww.py
++++ b/train_mww.py
+@@ -129,6 +129,11 @@ def load_config(config_path: str) -> dict:
+         # word — see ChannelAugmenter.
+         "augmentation": raw.get("augmentation", {}),
+ 
++        # Long real-environment recordings (hours, not clips): windowed with a
++        # coarse stride, unlike user_negatives/ which is dense. See phase_features.
++        "rehearsal_stride": int(raw.get("features", {}).get("rehearsal_stride", 100)),
++        "hf_max_windows": int(raw.get("features", {}).get("hf_max_windows", 500_000)),
++
+         # Voice configuration
+         "primary_voices_base_url": primary.get("base_url", ""),
+         "primary_voices": primary.get("models", {}),
+@@ -198,6 +203,21 @@ def _is_latin(text: str) -> bool:
+     return total > 0 and latin / total > 0.5
+ 
+ 
++_NUM_SPEAKERS: dict = {}
++
++
++def num_speakers(voice_onnx) -> int:
++    """Speakers in a Piper voice (1 for most; libritts_r has 904, vctk 109)."""
++    key = str(voice_onnx)
++    if key not in _NUM_SPEAKERS:
++        try:
++            with open(key + ".json", encoding="utf-8") as f:
++                _NUM_SPEAKERS[key] = int(json.load(f).get("num_speakers", 1))
++        except Exception:
++            _NUM_SPEAKERS[key] = 1
++    return _NUM_SPEAKERS[key]
++
++
+ def synthesize_clip(phrase: str, voice_onnx: str, out_path: Path,
+                     length_scale: float = 1.0, noise_scale: float = 0.667,
+                     noise_w: float = 0.8) -> bool:
+@@ -211,12 +231,18 @@ def synthesize_clip(phrase: str, voice_onnx: str, out_path: Path,
+     )
+     env["ESPEAK_DATA_PATH"] = str(PIPER_ESPEAK.resolve())
+ 
++    # Without --speaker Piper always uses speaker 0, wasting a multi-speaker
++    # voice's whole point: many different people saying the phrase.
++    speaker = []
++    if num_speakers(voice_onnx) > 1:
++        speaker = ["--speaker", str(random.randrange(num_speakers(voice_onnx)))]
++
+     result = subprocess.run(
+         [str(PIPER_BIN.resolve()), "--model", str(voice_onnx),
+          "--output_file", str(out_path),
+          "--length_scale", str(length_scale),
+          "--noise_scale", str(noise_scale),
+-         "--noise_w", str(noise_w)],
++         "--noise_w", str(noise_w)] + speaker,
+         input=phrase, text=True, capture_output=True, env=env,
+     )
+     if result.returncode != 0 or not out_path.exists() or out_path.stat().st_size <= 44:
+@@ -262,6 +288,20 @@ def _get_window(frames: np.ndarray, start: int, spec_length: int) -> np.ndarray:
+ _CHANNEL: "Optional[ChannelAugmenter]" = None
+ 
+ 
++def release_memory() -> None:
++    """Hand freed heap back to the OS. Feature extraction builds lists of
++    hundreds of thousands of small arrays; after they are freed glibc keeps the
++    pages, and on a 16 GB machine that retained heap is what gets the negative
++    half of the features phase OOM-killed."""
++    import ctypes
++    import gc
++    gc.collect()
++    try:
++        ctypes.CDLL("libc.so.6").malloc_trim(0)
++    except Exception:
++        pass
++
++
+ class ChannelAugmenter:
+     """Put synthetic speech through a room, a loudspeaker and a microphone.
+ 
+@@ -527,7 +567,10 @@ def extract_features_from_dir(
+     if failed:
+         log.warning("  %d / %d files failed", failed, len(wav_files))
+ 
+-    return np.array(features, dtype=np.float32)
++    out = np.array(features, dtype=np.float32)
++    del features
++    release_memory()
++    return out
+ 
+ 
+ # ===========================================================================
+@@ -638,6 +681,11 @@ def _generate_clips(phrases: list, voice_files: list, n_total: int,
+         return
+     remaining = n_total - existing
+ 
++    # A multi-speaker voice is hundreds of people, a single-speaker voice one:
++    # give the former three shares so they are not drowned out.
++    voice_files = [v for v in voice_files
++                   for _ in range(3 if num_speakers(v) > 1 else 1)]
++
+     length_scales = [0.75, 1.0, 1.1, 1.25]
+     noise_scales = [0.667, 0.8, 0.98]
+     noise_ws = [0.8, 0.9, 0.98]
+@@ -831,7 +879,7 @@ def _download_hf_negatives(feat_dir: Path, spec_length: int,
+                             for start in range(0, max(1, n_frames - spec_length + 1), step):
+                                 w = spec[start:start + spec_length]
+                                 if len(w) == spec_length:
+-                                    all_features.append(w)
++                                    all_features.append(w.copy())
+                             if len(all_features) >= max_windows:
+                                 break
+                     except Exception as exc:
+@@ -848,6 +896,8 @@ def _download_hf_negatives(feat_dir: Path, spec_length: int,
+ 
+         if all_features:
+             result = np.array(all_features[:max_windows], dtype=np.float32)
++            del all_features
++            release_memory()
+             log.info("  HF negatives: %d windows (spec_length=%d)", len(result), spec_length)
+             return result
+ 
+@@ -948,6 +998,7 @@ def phase_features(cfg: dict):
+         # phase is the memory-hungry part. Holding 14 GB of positives through it
+         # for no reason is what pushed the first attempt into swap.
+         del pos_train
++        release_memory()
+ 
+     pos_val_npy = feat_dir / "positive_val.npy"
+     if pos_val_npy.exists():
+@@ -1003,6 +1054,18 @@ def phase_features(cfg: dict):
+         neg_arrays.append(user_neg)
+         log.info("  User negatives: %s", user_neg.shape)
+ 
++    # Hours of real recordings from the target environment. Dense windowing is
++    # for short mined clips; at 1 window per 10 ms a single hour is ~12 GB of
++    # features, so these get a coarse stride (min_energy drops the silent parts).
++    rehearsal_dir = base / "rehearsal_negatives"
++    if rehearsal_dir.exists() and list(rehearsal_dir.glob("*.wav")):
++        rehearsal = extract_features_from_dir(
++            rehearsal_dir, "rehearsal_negatives", spec_length,
++            augment_stride=cfg["rehearsal_stride"],
++        )
++        neg_arrays.append(rehearsal)
++        log.info("  Rehearsal negatives: %s", rehearsal.shape)
++
+     # Spoken negatives from other synthesisers: the commands this device is
+     # actually given, and the words that sound like the target inside them.
+     # v4 stopped a timer and cut a spoken confirmation because it heard «стоп»
+@@ -1021,7 +1084,8 @@ def phase_features(cfg: dict):
+         log.info("  Spoken-command negatives: %s", tts_neg.shape)
+ 
+     # 3. HF negatives (speech, no_speech, dinner_party)
+-    hf_neg = _download_hf_negatives(feat_dir, spec_length, max_windows=500_000)
++    hf_neg = _download_hf_negatives(feat_dir, spec_length,
++                                    max_windows=cfg["hf_max_windows"])
+     if hf_neg is not None:
+         neg_arrays.append(hf_neg)
+ 
+@@ -1031,24 +1095,45 @@ def phase_features(cfg: dict):
+             "Generate adversarial clips (--phase generate) or ensure HF download works."
+         )
+ 
+-    # np.concatenate holds the inputs and the result at the same time, so peak
+-    # memory is twice the total. With densely-windowed user negatives the total
+-    # reaches ~12 GB, and the doubling is enough to get the process OOM-killed
+-    # with no traceback. Preallocate once and copy each source in, dropping it
+-    # as soon as it is consumed.
++    # Assemble on disk, not in RAM. The sources together are several GB; holding
++    # them plus a combined copy (and then shuffling that copy in place) is what
++    # got this phase OOM-killed on a 16 GB machine. Each source is written to
++    # the .npy files through a memmap and dropped as soon as it is consumed.
++    # Rows are assigned to train/val at random; the order inside the files does
++    # not matter because the training generator draws shuffled indices.
+     total = sum(len(a) for a in neg_arrays)
+-    all_neg = np.empty((total, *neg_arrays[0].shape[1:]), dtype=neg_arrays[0].dtype)
+-    offset = 0
++    shape_tail = neg_arrays[0].shape[1:]
++    is_val = np.zeros(total, dtype=bool)
++    is_val[np.random.choice(total, total - int(total * 0.9), replace=False)] = True
++    split = int(total - is_val.sum())
++    # Written under a temporary name and renamed at the very end: a run killed
++    # half-way must not leave files that the next run skips as "already done".
++    train_tmp = neg_train_npy.with_suffix(".partial.npy")
++    val_tmp = neg_val_npy.with_suffix(".partial.npy")
++    train_mm = np.lib.format.open_memmap(
++        str(train_tmp), mode="w+", dtype=np.float32, shape=(split, *shape_tail))
++    val_mm = np.lib.format.open_memmap(
++        str(val_tmp), mode="w+", dtype=np.float32, shape=(total - split, *shape_tail))
++    offset = ti = vi = 0
+     while neg_arrays:
+         chunk = neg_arrays.pop(0)
+-        all_neg[offset:offset + len(chunk)] = chunk
++        mask = is_val[offset:offset + len(chunk)]
++        for start in range(0, len(chunk), 8192):
++            part, m = chunk[start:start + 8192], mask[start:start + 8192]
++            n_val = int(m.sum())
++            train_mm[ti:ti + len(part) - n_val] = part[~m]
++            val_mm[vi:vi + n_val] = part[m]
++            ti += len(part) - n_val
++            vi += n_val
+         offset += len(chunk)
+         del chunk
+-    np.random.shuffle(all_neg)
+-
+-    split = int(len(all_neg) * 0.9)
+-    np.save(str(neg_train_npy), all_neg[:split])
+-    np.save(str(neg_val_npy), all_neg[split:])
++        train_mm.flush()
++        release_memory()
++    val_mm.flush()
++    del train_mm, val_mm
++    os.replace(train_tmp, neg_train_npy)
++    os.replace(val_tmp, neg_val_npy)
++    all_neg = range(total)
+     log.info("  negative_train: %d, negative_val: %d", split, len(all_neg) - split)
+     log.info("  Feature extraction complete.")
+ 

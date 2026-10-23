@@ -7,7 +7,9 @@ this model good enough", independent of whichever trainer produced it.
 
 - Negatives (rehearsal vocal tracks, 16 kHz mono WAV): every activation is a false accept.
   Reported as false accepts per hour for a range of probability cutoffs, so you can see what a
-  different cutoff would do without retraining.
+  different cutoff would do without retraining. The first WARMUP_S of each file are not counted:
+  the feature frontend starts from an empty state there and produced spurious peaks (up to 0.99 on
+  tapedeck_marker) that vanish when the same audio follows the previous chunk, as it does live.
 - Positives (real recordings of the phrase, one clip per file): recall = share of clips that
   trigger. Each clip is padded with 1 s of silence on both sides, as in a live stream.
 - --dump-false-accepts writes 3 s around each false accept (at the model's own cutoff) as WAV -
@@ -26,6 +28,7 @@ from pymicro_wakeword import MicroWakeWord, MicroWakeWordFeatures
 CUTOFFS = [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95, 0.97, 0.99]
 FEATURE_STEP_S = 0.010
 MERGE_S = 2.0
+WARMUP_S = 2.0
 
 
 def read_wav16(path):
@@ -47,11 +50,13 @@ def probabilities(model_path, pcm):
     return np.array(probs, dtype=np.float32), model.probability_cutoff
 
 
-def count_events(probs, cutoff):
+def count_events(probs, cutoff, skip_s=0.0):
     """Activations above cutoff, merged within MERGE_S - one spoken phrase = one event."""
     events, last = [], -1e9
     for idx in np.flatnonzero(probs > cutoff):
         t = idx * FEATURE_STEP_S
+        if t < skip_s:
+            continue
         if t - last > MERGE_S:
             events.append(t)
         last = t
@@ -81,9 +86,9 @@ def main():
             hours += len(pcm) / 16000 / 3600
             probs, own_cutoff = probabilities(args.model, pcm)
             for c in CUTOFFS:
-                counts[c] += len(count_events(probs, c))
+                counts[c] += len(count_events(probs, c, WARMUP_S))
             if args.dump_false_accepts:
-                for t in count_events(probs, own_cutoff):
+                for t in count_events(probs, own_cutoff, WARMUP_S):
                     a = max(0, int((t - 2.0) * 16000))
                     clip = pcm[a:a + 3 * 16000]
                     out = os.path.join(args.dump_false_accepts, f'{os.path.splitext(f)[0]}_{t:07.1f}s.wav')

@@ -1,0 +1,154 @@
+# Konfiguration für interkelstar/microwakeword-trainer (Stand 8fdbadc + training/trainer.patch).
+# Aufruf im Trainer-Ordner: ./run_mww.sh --config <dieses Repo>/training/configs/tapedeck_marker.yaml
+model_name: tapedeck_record
+wake_word: "Tape deck, record"
+author: MartenMagEis
+trained_languages: ["en"]
+version: 1
+train_with_recordings: false
+
+# Satzzeichen-Varianten geben der TTS andere Betonung und Pausenlänge.
+# "record" spricht Piper als Substantiv (RE-cord), "rekord" als Verb (re-CORD) - beides aufnehmen,
+# in der Probe wird vermutlich beides gesagt.
+target_phrases:
+  - Tape deck, record
+  - Tape deck record
+  - Tape deck, record!
+  - Tape deck, rekord
+  - Tape deck rekord
+  - Tape deck, rekord!
+  - Tapedeck, rekord
+
+# Kleiner als das Beispiel des Trainers (50k/10k): der Rechner hat 15 GB RAM, und die
+# Merkmalsextraktion hält alle Fenster im Speicher (ca. 33 KB pro Fenster, kurzzeitig doppelt).
+training:
+  n_samples: 15000
+  n_samples_val: 3000
+
+# Dieselben Stimmen in beiden Gruppen: "secondary" spricht alle Negativphrasen in lateinischer
+# Schrift. libritts_r (904 Sprecher) und vctk (109) bekommen durch den Patch zufällige Sprecher.
+voices:
+  primary:
+    base_url: https://huggingface.co/rhasspy/piper-voices/resolve/main
+    models: &voices
+      en_US-libritts_r-medium: en/en_US/libritts_r/medium
+      en_GB-vctk-medium: en/en_GB/vctk/medium
+      en_US-lessac-medium: en/en_US/lessac/medium
+      en_US-ryan-medium: en/en_US/ryan/medium
+      en_US-amy-medium: en/en_US/amy/medium
+      en_US-joe-medium: en/en_US/joe/medium
+      en_GB-alan-medium: en/en_GB/alan/medium
+      en_GB-cori-medium: en/en_GB/cori/medium
+      en_GB-northern_english_male-medium: en/en_GB/northern_english_male/medium
+  secondary:
+    base_url: https://huggingface.co/rhasspy/piper-voices/resolve/main
+    models: *voices
+
+negative_phrases:
+  # Die anderen Befehle und das Vorwort allein - das Modell darf nur auf sein Befehlswort hin auslösen
+  - Tape deck, finish
+  - Tape deck finish
+  - Tape deck, marker
+  - Tape deck marker
+  - Tape deck, next song
+  - Tape deck next song
+  - Tape deck
+  - Tape deck!
+  - Tapedeck
+  # Vorwort + ähnlich klingendes Befehlswort
+  - Tape deck, recorder
+  - Tape deck, reboot
+  - Tape deck, rewind
+  - Tape deck, reset
+  - Tape deck, react
+  - Tape deck, regard
+  - Tape deck, reckon
+  - Tape deck, report
+  - Tape deck, accord
+  - Tape deck, Rick
+  - Tape deck, replay
+  - Tape deck, recall
+  # Befehlswort ohne Vorwort
+  - Record
+  - Rekord
+  - Recording
+  - Let's record
+  - Record player
+  - The record
+  - A new record
+  - Recorder
+  - Reward
+  - Accord
+  - Okay, record
+  - Are we recording
+  - We're recording
+  - Hit record
+  - Take a record
+  - Tape the record
+  - Wreck it
+  - Rick hard
+  # Ähnliches Vorwort
+  - Take that
+  - Tape that
+  - Take the
+  - Tape measure
+  - Take a break
+  - Take deck
+  - Cassette deck
+  - Tape recorder
+  - Take it back
+  - Take care
+  - Take a look
+  - Paycheck
+  - Table deck
+  # Proben-Gerede
+  - One two three four
+  - From the top
+  - Let's do that again
+  - Next song
+  - Can you turn me up
+  - More vocals on the monitor
+  - Check one two
+  - That was too fast
+  - Stop the tape
+  - Marker
+  - Tape deck, market
+
+features:
+  # Probenaudio (rehearsal_negatives/): ein 2,04-s-Fenster pro Sekunde, stille Fenster fallen raus.
+  rehearsal_stride: 100
+  # Allgemeine Negativdaten (Sprache, Geräusche, Stimmengewirr) von kahrendt/microwakeword. Obergrenze;
+  # tatsächlich kommen ca. 22 % davon heraus (viele Einträge sind kürzer als ein Fenster), also ~100k.
+  hf_max_windows: 450000
+
+microwakeword:
+  architecture: mixednet
+  pointwise_filters: "64,64,64,64"
+  repeat_in_block: "1,1,1,1"
+  mixconv_kernel_sizes: "[5], [7,11], [9,15], [23]"
+  first_conv_filters: 32
+  first_conv_kernel_size: 5
+  stride: 3
+  spectrogram_length: 204
+  training_steps: 10000
+  batch_size: 128
+  learning_rate: 0.001
+  positive_class_weight: 1.5
+  negative_class_weight: 1
+  time_mask_max_size: 5
+  time_mask_count: 2
+  freq_mask_max_size: 5
+  freq_mask_count: 2
+  probability_cutoff: 0.9
+  sliding_window_size: 10
+
+# Raum- und Umgebungssimulation: die TTS-Clips werden mit gemessenen Raumantworten gefaltet und mit
+# Probenaudio (nur Trainingsanteil!) unterlegt - so hört das Modell die Phrase "im Proberaum".
+# SNR bewusst nicht unter 3 dB: eine Ansage, die im Gesang untergeht, soll nicht auslösen müssen.
+augmentation:
+  enabled: true
+  rir_dir: training/mit_rirs/16khz
+  background_dir: training/background
+  rir_probability: 0.5
+  background_probability: 0.8
+  background_snr_db: [3, 25]

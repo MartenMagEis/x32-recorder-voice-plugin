@@ -13,6 +13,12 @@ Befehl: `<name>.json` + `<name>.tflite` (ca. 50-300 KB) für den Ordner `wakewor
 
 ## So startest du
 
+> **Vor jedem langen Lauf den Windows-Standby pausieren** - sonst schläft der PC nach 45 min ohne
+> Eingabe ein und das Training friert ein. Aus WSL:
+> `cd /mnt/c && powercfg.exe /change standby-timeout-ac 0 && powercfg.exe /change hibernate-timeout-ac 0`.
+> Wenn alles fertig ist, wieder zurückstellen (vorher 45/46 min):
+> `powercfg.exe /change standby-timeout-ac 45 && powercfg.exe /change hibernate-timeout-ac 46`.
+
 In einem WSL-Terminal (Ubuntu):
 
 ```bash
