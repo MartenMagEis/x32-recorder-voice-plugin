@@ -80,3 +80,79 @@ class AppSettingsTests(TestCase):
 
         path = plugin_config.get_config_values()["samples_path"].replace("\\", "/")
         self.assertTrue(path.endswith("/wakeword_training/auto"), path)
+
+
+class SampleReviewTests(TestCase):
+    """The review page's backend: listing with database hints, labels, deleting, audio."""
+
+    def setUp(self):
+        import datetime
+        import tempfile
+
+        from django.test import override_settings
+        from django.utils import timezone
+
+        from recorder.models import Recording, RecordingMarker
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        override = override_settings(RECORDING_PATH=tmp.name + "/recordings/")
+        override.enable()
+        self.addCleanup(override.disable)
+        self.folder = __import__("pathlib").Path(tmp.name) / "wakeword_training" / "auto" / "tapedeck_marker"
+        self.folder.mkdir(parents=True)
+
+        started = timezone.now() - datetime.timedelta(minutes=10)
+        self.recording = Recording.objects.create(state=Recording.STOPPED, channels=[0], started_at=started)
+        kept = RecordingMarker.objects.create(recording=self.recording, timestamp=datetime.timedelta(seconds=60),
+                                              marker_type=1)
+        RecordingMarker.objects.create(recording=self.recording, timestamp=datetime.timedelta(seconds=125),
+                                       marker_type=1)  # by hand, 5 s after the near miss below
+        at = lambda s: (started + datetime.timedelta(seconds=s)).isoformat()
+        self.write("a_erkannt", {"time": at(60), "kind": "erkannt", "marker_ids": [kept.id]})
+        self.write("b_erkannt", {"time": at(90), "kind": "erkannt", "marker_ids": [kept.id + 100]})
+        self.write("c_beinahe", {"time": at(120), "kind": "beinahe"})
+        self.client = Client()
+
+    def write(self, name, meta):
+        meta = {"command": "marker", "model": "tapedeck_marker", "channel_no": 15, "probability": 0.7,
+                "label": None, "hints": [], "recording_id": self.recording.id, **meta}
+        (self.folder / f"{name}.json").write_text(json.dumps(meta), encoding="utf-8")
+        (self.folder / f"{name}.wav").write_bytes(b"RIFF")
+
+    def listing(self, all_=False):
+        return self.client.get("/plugins/x32_recorder_voice_plugin/samples/api/list/" + ("?all=1" if all_ else "")).json()["samples"]
+
+    def test_lists_newest_first_with_db_hints(self):
+        rows = {r["id"].split("/")[-1]: r for r in self.listing()}
+        self.assertEqual(list(rows), ["c_beinahe", "b_erkannt", "a_erkannt"])
+        self.assertEqual(rows["a_erkannt"]["db_hints"], [])
+        self.assertEqual(rows["b_erkannt"]["db_hints"], ["Marker später gelöscht"])
+        self.assertEqual(rows["c_beinahe"]["db_hints"], ["kurz danach Marker von Hand gesetzt"])
+        # stored for the training PC, which has no database
+        stored = json.loads((self.folder / "c_beinahe.json").read_text(encoding="utf-8"))
+        self.assertEqual(stored["db_hints"], ["kurz danach Marker von Hand gesetzt"])
+
+    def post(self, action, **data):
+        return self.client.post(f"/plugins/x32_recorder_voice_plugin/samples/api/{action}/",
+                                data=json.dumps(data), content_type="application/json")
+
+    def test_label_hides_from_open_list_and_delete_removes(self):
+        self.assertEqual(self.post("label", id="tapedeck_marker/a_erkannt", label="positiv").status_code, 200)
+        self.assertEqual(len(self.listing()), 2)
+        self.assertEqual(len(self.listing(all_=True)), 3)
+        self.assertEqual(self.post("label", id="tapedeck_marker/a_erkannt", label="kaputt").status_code, 400)
+        self.assertEqual(self.post("delete", id="tapedeck_marker/b_erkannt").status_code, 200)
+        self.assertFalse((self.folder / "b_erkannt.wav").exists())
+
+    def test_rejects_paths_outside_the_samples_folder(self):
+        self.assertEqual(self.post("delete", id="../../recordings/x").status_code, 400)
+        resp = self.client.get("/plugins/x32_recorder_voice_plugin/samples/audio/../../../settings.py")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_audio_and_page(self):
+        resp = self.client.get("/plugins/x32_recorder_voice_plugin/samples/audio/tapedeck_marker/a_erkannt")
+        self.assertEqual((resp.status_code, resp["Content-Type"]), (200, "audio/wav"))
+        resp.close()
+        page = self.client.get("/plugins/x32_recorder_voice_plugin/samples/")
+        self.assertContains(page, "Sprachbeispiele")

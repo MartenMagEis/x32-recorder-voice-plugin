@@ -70,6 +70,8 @@ def get_config_schema():
          "help_text": "Normalerweise nicht nötig - beim ersten Aktivieren wird automatisch installiert. "
                       "Nur für ein Update der Erkennung oder nach einer fehlgeschlagenen Installation.",
          "readonly": False},
+        {"name": "samples_review", "label": "Sprachbeispiele anhören und bewerten", "type": "link",
+         "readonly": True, "help_text": ""},
         {"name": "samples_path", "label": "Ablage der Sprachbeispiele", "type": "string", "readonly": True,
          "help_text": "Pro Modell ein Ordner mit WAV + JSON je Clip - für das Training z.B. per rsync holen."},
         {"name": "worker_status", "label": "Status", "type": "string", "help_text": "", "readonly": True},
@@ -82,7 +84,8 @@ def get_config_values():
     values = model_instance_values(VoiceSettings.get_solo(), FIELDS)
     folder = sample_store.samples_dir()
     values.update(install_status=supervisor.install_status_text(), worker_status=_status_text(),
-                  recent=_recent_text(), samples_path=str(folder) if folder else "")
+                  recent=_recent_text(), samples_path=str(folder) if folder else "",
+                  samples_review=f"/plugins/{supervisor.APP_NAME}/samples/" if folder and folder.is_dir() else "")
     return values
 
 

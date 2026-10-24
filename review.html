@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprachbeispiele</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d232b; --muted: #5d6773; --border: #d9dee4;
+    --accent: #2f6fd6; --good: #1f8a4c; --bad: #c23b32; --unsure: #9a6b00; --chip: #eef1f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --card: #1d232a; --text: #e6e9ed; --muted: #9aa4af; --border: #2e3640;
+      --accent: #6da2ff; --good: #4cc27f; --bad: #ff7a70; --unsure: #e0b24a; --chip: #262e37;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; }
+  .intro { color: var(--muted); margin: 0 0 16px; }
+  .bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .bar label { display: flex; gap: 6px; align-items: center; }
+  .count { color: var(--muted); margin-left: auto; }
+  .clip { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+          margin-bottom: 10px; }
+  .head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+  .head strong { font-size: 1rem; }
+  .chip { background: var(--chip); border-radius: 999px; padding: 1px 8px; font-size: .82rem; }
+  .chip.erkannt { color: var(--accent); }
+  .chip.hint { color: var(--unsure); }
+  .meta { color: var(--muted); font-size: .85rem; margin: 4px 0 8px; }
+  audio { width: 100%; height: 36px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  button { font: inherit; border: 1px solid var(--border); background: var(--card); color: var(--text);
+           border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button.positiv.on, button.positiv:hover { border-color: var(--good); color: var(--good); }
+  button.negativ.on, button.negativ:hover { border-color: var(--bad); color: var(--bad); }
+  button.unklar.on, button.unklar:hover { border-color: var(--unsure); color: var(--unsure); }
+  button.on { font-weight: 600; }
+  button.delete { margin-left: auto; color: var(--muted); }
+  .empty, .error { color: var(--muted); padding: 24px 0; text-align: center; }
+  .error { color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sprachbeispiele</h1>
+  <p class="intro">
+    Clips rund um jede Erkennung und jeden Beinahe-Treffer. <b>Ansage</b> = es wurde wirklich der
+    Befehl gesagt (wird Positivbeispiel), <b>Fehlauslöser</b> = etwas anderes (wird Negativbeispiel).
+    Was hier offen bleibt, bewertet beim Training die automatische Spracherkennung.
+  </p>
+  <div class="bar">
+    <label><input type="checkbox" id="all"> auch bewertete zeigen</label>
+    <span class="count" id="count"></span>
+  </div>
+  <div id="list"></div>
+</main>
+<script>
+  const LABELS = [['positiv', '✓ Ansage'], ['negativ', '✗ Fehlauslöser'], ['unklar', '? unklar']];
+  const list = document.getElementById('list');
+  const all = document.getElementById('all');
+
+  function el(tag, attrs = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') node.className = v; else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+      else node.setAttribute(k, v);
+    }
+    for (const c of children) if (c != null) node.append(c);
+    return node;
+  }
+
+  async function post(path, body) {
+    const resp = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                     body: JSON.stringify(body) });
+    if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || resp.statusText);
+  }
+
+  function render(samples) {
+    list.replaceChildren();
+    document.getElementById('count').textContent = `${samples.length} Clip(s)`;
+    if (!samples.length) {
+      list.append(el('div', { class: 'empty' }, all.checked ? 'Noch keine Sprachbeispiele gesammelt.'
+                                                            : 'Nichts offen - alles bewertet.'));
+      return;
+    }
+    for (const s of samples) {
+      const when = new Date(s.time).toLocaleString('de-DE');
+      const hints = [...(s.hints || []), ...(s.db_hints || [])];
+      const buttons = LABELS.map(([value, text]) => el('button', {
+        class: value + (s.label === value ? ' on' : ''),
+        onclick: async () => {
+          try { await post('api/label/', { id: s.id, label: s.label === value ? null : value }); load(); }
+          catch (e) { alert(e.message); }
+        },
+      }, text));
+      const del = el('button', { class: 'delete', onclick: async () => {
+        if (!confirm('Clip löschen?')) return;
+        try { await post('api/delete/', { id: s.id }); load(); } catch (e) { alert(e.message); }
+      } }, 'Löschen');
+      list.append(el('div', { class: 'clip' },
+        el('div', { class: 'head' },
+          el('strong', {}, s.model || s.command),
+          el('span', { class: 'chip ' + s.kind }, s.kind === 'erkannt' ? 'erkannt' : 'Beinahe-Treffer'),
+          el('span', { class: 'chip' }, `Kanal ${s.channel_no}`),
+          el('span', { class: 'chip' }, `${Math.round(s.probability * 100)} %`),
+          ...hints.map((h) => el('span', { class: 'chip hint' }, h))),
+        el('div', { class: 'meta' }, when + (s.result ? ' · ' + s.result : '')),
+        el('audio', { controls: '', preload: 'none', src: 'audio/' + s.id }),
+        el('div', { class: 'actions' }, ...buttons, del)));
+    }
+  }
+
+  async function load() {
+    try {
+      const resp = await fetch('api/list/' + (all.checked ? '?all=1' : ''));
+      if (!resp.ok) throw new Error(resp.statusText);
+      render((await resp.json()).samples);
+    } catch (e) {
+      list.replaceChildren(el('div', { class: 'error' }, 'Konnte die Clips nicht laden: ' + e.message));
+    }
+  }
+
+  all.addEventListener('change', load);
+  load();
+</script>
+</body>
+</html>
