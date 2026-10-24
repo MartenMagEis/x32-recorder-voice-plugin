@@ -60,6 +60,32 @@ Stimmen, eure Mikros und euren Raum wirklich erkennt. So aufnehmen:
 Ca. 2/3 der Clips können zusätzlich ins Training (als echte Positivbeispiele, falls der Trainer das
 unterstützt), mindestens 1/3 bleibt **immer** draußen und dient nur der Bewertung.
 
+## Automatisch gesammelte Sprachbeispiele
+
+Mit **"Sprachbeispiele sammeln"** in den Plugin-Einstellungen legt der Pi bei jeder Erkennung und
+jedem Beinahe-Treffer einen 4-s-Clip des Sprach-Kanals ab (16 kHz, WAV + JSON), unter
+`/mnt/32recorder/wakeword_training/auto/<modellname>/`. Echte Ansagen werden so zu
+Positivbeispielen, Fehlauslöser zu Negativbeispielen - beides genau aus euren Mikros und eurem Raum.
+Beinahe-Treffer fangen außerdem einen Teil der *verpassten* Ansagen ein (Hinweis "danach erkannt",
+wenn kurz darauf derselbe Befehl erkannt wurde, oder "kurz danach Marker von Hand gesetzt").
+
+Bewerten:
+- Wer mag, hört Clips auf dem Pi an (Button **"Sprachbeispiele anhören und bewerten"** in den
+  Plugin-Einstellungen) - diese Bewertung gilt immer.
+- Den Rest erledigt `training/label_clips.py` auf dem PC: Whisper transkribiert jeden Clip und
+  vergleicht mit der Phrase des Modells; Unklares wird am Ende aufgelistet.
+
+```bash
+rsync -av pi@rec-pi:/mnt/32recorder/wakeword_training/auto/ ~/wakeword_data/auto/
+pip install faster-whisper      # in der Trainings-venv, nutzt die GPU
+python training/label_clips.py --samples ~/wakeword_data/auto --out ~/wakeword_data
+```
+
+Ergebnis: Positive landen als `auto_*.wav` in `positives_real/<modellname>/` (neben den von Hand
+aufgenommenen, gleiche Regel: mindestens 1/3 nur zur Bewertung, nie ins Training), Negative in
+`negatives_auto/<modellname>/` - Letztere sind die wertvollsten Gegenbeispiele überhaupt (genau das,
+was das Modell bisher verwechselt hat) und gehören wie die `--dump-false-accepts`-Clips ins Training.
+
 ## Was "mehrere Durchläufe" heißt
 
 Kein blindes Wiederholen - jeder Durchlauf wird mit `training/evaluate.py` gemessen, und je nach

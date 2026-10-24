@@ -18,8 +18,8 @@ Modelle zusammen rund 12 % eines CPU-Kerns.
 | Marker | Wie der Marker-Button: Song-Start bzw. Song-Ende |
 | Nächster Song | Beendet den offenen Song und startet den nächsten aus der Setlist der Vorlage |
 
-Marker werden um die Erkennungszeit zurückdatiert (einstellbar), damit sie dort sitzen, wo das Wort
-gesprochen wurde.
+Song-Ende und Sondermarker landen vor der Ansage, Song-Starts danach (Länge der Ansage einstellbar) -
+so ist die Ansage auf keinem ausgeschnittenen Song.
 
 ## Einrichten
 
@@ -44,6 +44,17 @@ dazwischen, auf dem Audiogerät der letzten Aufnahme. Während des Zurückspiele
 kein Audio. Soundcheck-Aufnahmen werden ignoriert.
 
 Status und die letzten Erkennungen stehen in den Plugin-Einstellungen.
+
+## Sprachbeispiele sammeln (optional)
+
+Mit **"Sprachbeispiele sammeln"** speichert das Plugin bei jeder Erkennung und jedem
+Beinahe-Treffer (das Modell war nah dran, hat aber nicht ausgelöst) einen kurzen Clip des
+Sprach-Kanals - Material, um die Modelle mit euren echten Stimmen nachzutrainieren. Die Clips
+bleiben während Aufnahme und Wiedergabe im Speicher und werden erst danach geschrieben, nach
+`<Aufnahmelaufwerk>/wakeword_training/auto/<Modell>/` (Platz begrenzt, einstellbar). Über
+**"Sprachbeispiele anhören und bewerten"** lassen sie sich anhören und als Ansage/Fehlauslöser
+markieren; den Rest bewertet beim Training `training/label_clips.py` per Spracherkennung (siehe
+`training/TRAINING.md`).
 
 ## Wake-Word-Modelle
 
@@ -73,7 +84,7 @@ verschieden, keine Wörter, die in euren Songtexten vorkommen.
 
 ```bash
 # Worker (im Plugin-Ordner, braucht numpy):
-python -m unittest tests.test_worker
+python -m unittest tests.test_worker tests.test_samples tests.test_label_clips
 # Django-Teil (in einem x32-recorder-Checkout mit aktiviertem Plugin):
 uv run python x32recorder/manage.py test x32_recorder_voice_plugin
 ```
