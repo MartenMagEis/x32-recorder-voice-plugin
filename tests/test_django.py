@@ -74,3 +74,9 @@ class AppSettingsTests(TestCase):
         plugin_config.update_config_values({"enabled": True, "model_marker": "okay_nabu", "recent": "ignored"})
         settings = VoiceSettings.get_solo()
         self.assertEqual((settings.enabled, settings.model_marker), (True, "okay_nabu"))
+
+    def test_samples_land_next_to_the_recordings(self):
+        from .. import plugin_config
+
+        path = plugin_config.get_config_values()["samples_path"].replace("\\", "/")
+        self.assertTrue(path.endswith("/wakeword_training/auto"), path)

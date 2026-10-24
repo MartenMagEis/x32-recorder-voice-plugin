@@ -32,12 +32,13 @@ class CommandDetector:
             model.reset()
 
     def process(self, pcm16):
-        """16 kHz mono int16 bytes -> [(command, probability), ...] for every model above its
-        own cutoff (the cutoff shipped with the model, tuned by its trainer)."""
-        hits = []
+        """16 kHz mono int16 bytes -> [(command, probability, hit), ...] for every model step.
+        `hit` means above the model's own cutoff (shipped with the model, tuned by its trainer);
+        the probabilities below it are what near-miss sample collection looks at."""
+        results = []
         for features in self.features.process_streaming(pcm16):
             for command, model in self.models.items():
                 prob = model.process_streaming_prob(features)
-                if prob is not None and prob > model.probability_cutoff:
-                    hits.append((command, prob))
-        return hits
+                if prob is not None:
+                    results.append((command, prob, prob > model.probability_cutoff))
+        return results

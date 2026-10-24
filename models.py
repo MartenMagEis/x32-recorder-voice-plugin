@@ -37,8 +37,26 @@ class VoiceSettings(models.Model):
                    "Sondermarker werden um so viel vorverlegt, der Song-Start bleibt nach der Ansage - "
                    "so ist die Ansage auf keinem ausgeschnittenen Song."
     )
+    collect_samples = models.BooleanField(
+        "Sprachbeispiele sammeln", default=False,
+        help_text="Speichert bei jeder Erkennung und jedem Beinahe-Treffer einen kurzen Clip des "
+                   "Sprach-Kanals (ca. 4 s) - als Trainingsmaterial: echte Ansagen als Positiv-, "
+                   "Fehlauslöser als Negativbeispiele. Geschrieben wird erst, wenn keine Aufnahme "
+                   "und keine Wiedergabe läuft."
+    )
+    near_miss_percent = models.IntegerField(
+        "Beinahe-Treffer ab (%)", default=50,
+        help_text="Wahrscheinlichkeit, ab der ein nicht ausgelöster Befehl als Beinahe-Treffer "
+                   "gesammelt wird - so landen auch knapp verpasste Ansagen im Material."
+    )
+    samples_max_mb = models.IntegerField(
+        "Speicherplatz für Sprachbeispiele (MB)", default=500,
+        help_text="Darüber werden die ältesten noch nicht bewerteten Clips gelöscht, "
+                   "Beinahe-Treffer zuerst."
+    )
     udp_port = models.IntegerField("UDP-Port", default=47100,
-                                   help_text="Lokaler Port, auf dem der Controller das Audio schickt.")
+                                   help_text="Lokaler Port, auf dem der Controller das Audio schickt "
+                                             "(bei mehreren Sprach-Kanälen die folgenden Ports dazu).")
 
     @classmethod
     def get_solo(cls):

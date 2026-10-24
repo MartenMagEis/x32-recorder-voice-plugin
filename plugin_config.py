@@ -3,7 +3,7 @@ import os
 
 from recorder.plugin_support import describe_model_fields, model_instance_values
 
-from . import supervisor
+from . import sample_store, supervisor
 from .models import VoiceSettings
 
 MODEL_FIELDS = ["model_start", "model_stop", "model_marker", "model_next"]
@@ -15,6 +15,9 @@ FIELDS = [
     "confirm_window_s",
     "dedup_ms",
     "announcement_ms",
+    "collect_samples",
+    "near_miss_percent",
+    "samples_max_mb",
     "udp_port",
 ]
 
@@ -40,6 +43,8 @@ def _status_text():
     if status.get("template"):
         channels = ", ".join(str(c) for c in status.get("channels") or [])
         text += f" - Vorlage '{status['template']}', Kanal {channels}"
+    if status.get("samples_pending"):
+        text += f" - {status['samples_pending']} Sprachbeispiel(e) warten aufs Speichern"
     if status.get("error"):
         text += f" - Fehler: {status['error']}"
     return text
@@ -65,6 +70,8 @@ def get_config_schema():
          "help_text": "Normalerweise nicht nötig - beim ersten Aktivieren wird automatisch installiert. "
                       "Nur für ein Update der Erkennung oder nach einer fehlgeschlagenen Installation.",
          "readonly": False},
+        {"name": "samples_path", "label": "Ablage der Sprachbeispiele", "type": "string", "readonly": True,
+         "help_text": "Pro Modell ein Ordner mit WAV + JSON je Clip - für das Training z.B. per rsync holen."},
         {"name": "worker_status", "label": "Status", "type": "string", "help_text": "", "readonly": True},
         {"name": "recent", "label": "Letzte Erkennungen", "type": "string", "help_text": "", "readonly": True},
     ]
@@ -73,8 +80,9 @@ def get_config_schema():
 
 def get_config_values():
     values = model_instance_values(VoiceSettings.get_solo(), FIELDS)
+    folder = sample_store.samples_dir()
     values.update(install_status=supervisor.install_status_text(), worker_status=_status_text(),
-                  recent=_recent_text())
+                  recent=_recent_text(), samples_path=str(folder) if folder else "")
     return values
 
 

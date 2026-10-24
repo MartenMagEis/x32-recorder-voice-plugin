@@ -26,6 +26,7 @@ from .detector import CommandDetector
 from .gate import AWAIT_CONFIRM, FIRE, CommandGate
 from .recorder_api import ApiError, RecorderApi
 from .resample import Decimator, to_pcm16
+from .samples import KIND_NEAR_MISS, KIND_RECOGNIZED, AudioRing, NearMissTracker, SampleCollector, enforce_disk_limit
 
 logger = logging.getLogger('voice_worker')
 
@@ -72,6 +73,8 @@ class Listener:
         self.detector = None
         self.decimator = Decimator()
         self.last_seq = None
+        self.ring = AudioRing()
+        self.trackers = {}
 
     def assign(self, channel_no, mapping, wakewords_dir):
         """(Re)start listening to `channel_no` with the models in `mapping` - fresh audio state
@@ -80,6 +83,14 @@ class Listener:
         self.detector = CommandDetector(mapping, wakewords_dir) if any(mapping.values()) else None
         self.decimator = Decimator()
         self.last_seq = None
+        self.ring = AudioRing()
+        self.trackers = {cmd: NearMissTracker() for cmd in mapping}
+
+    def reset_detection(self):
+        if self.detector is not None:
+            self.detector.reset()
+        for tracker in self.trackers.values():
+            tracker.reset()
 
     def close(self):
         self.sock.close()
@@ -103,6 +114,9 @@ class Worker:
         self.state = 'startet'
         self.error = ''
         self.refresh_due = 0.0
+        self.collector = SampleCollector()
+        self.last_fire = {}  # command -> monotonic time it last fired, on any channel
+        self.last_created_markers = []
         self.idle_device_name = None
         self.idle_device_index = None
         self.idle_lookup_due = 0.0
@@ -116,6 +130,7 @@ class Worker:
             'error': self.error,
             'template': (self.target or {}).get('template_name'),
             'channels': (self.target or {}).get('channels', []),
+            'samples_pending': self.collector.pending_count(),
             'recent': self.recent,
         }
         tmp = self.status_file + '.tmp'
@@ -271,6 +286,7 @@ class Worker:
         action = 'toggle' if command == 'marker' else 'next'
         result = self.api.post(f"/recordings/{recording['id']}/marker_action/",
                                {'action': action, 'announcement_seconds': announcement})
+        self.last_created_markers = [m['id'] for m in result['created']]
         names = ', '.join(('Start ' + (m['name'] or '(ohne Name)')) if m['marker_type'] == 1 else 'Ende'
                           for m in result['created'])
         return f'Marker: {names}'
@@ -291,22 +307,82 @@ class Worker:
             # Gap (or a new tap): start the models from a clean state instead of stitching
             # together audio that doesn't belong together.
             listener.decimator.reset()
-            listener.detector.reset()
+            listener.reset_detection()
         listener.last_seq = seq
         samples = np.frombuffer(data[TAP_HEADER:], dtype='<f4')
-        for command, prob in listener.detector.process(to_pcm16(listener.decimator.process(samples))):
+        pcm = to_pcm16(listener.decimator.process(samples))
+        listener.ring.append(np.frombuffer(pcm, dtype='<i2'))
+        position = listener.ring.total
+        collect = self.collecting()
+        near = self.config.get('near_miss_percent', 50) / 100.0
+        for command, prob, hit in listener.detector.process(pcm):
+            if collect:
+                near_miss = listener.trackers[command].feed(prob, near, hit, position)
+                if near_miss:
+                    self._collect_near_miss(listener, command, *near_miss)
+            if not hit:
+                continue
             verdict = self.gate.feed(command)
             if verdict == FIRE:
+                self.last_created_markers = []
                 try:
-                    self.remember(command, prob, self.act(command), listener.channel_no)
+                    result = self.act(command)
                 except ApiError as e:
-                    self.remember(command, prob, f'Fehler: {e}', listener.channel_no)
+                    result = f'Fehler: {e}'
+                self.remember(command, prob, result, listener.channel_no)
+                self.last_fire[command] = time.monotonic()
+                if collect:
+                    self._collect(listener, KIND_RECOGNIZED, command, prob, position, result=result,
+                                  marker_ids=self.last_created_markers)
                 for other in self.listeners:
-                    if other.detector is not None:
-                        other.detector.reset()
+                    other.reset_detection()
                 self.refresh_due = 0.0  # pick up the new recording state right away
+                break  # the rest of this packet's results belong to the models just reset
             elif verdict == AWAIT_CONFIRM:
                 self.remember(command, prob, 'zur Bestätigung nochmal sagen', listener.channel_no)
+                if collect:
+                    self._collect(listener, KIND_RECOGNIZED, command, prob, position,
+                                  result='zur Bestätigung nochmal sagen')
+        if collect:
+            self.collector.on_audio(listener.ring)
+
+    # --- sample collection -------------------------------------------------------------------
+
+    def collecting(self):
+        return bool(self.config.get('collect_samples'))
+
+    def _collect(self, listener, kind, command, prob, position, **extra):
+        recording = (self.target or {}).get('recording')
+        self.collector.add(listener.ring, position, kind, command, self.mapping.get(command, ''),
+                           listener.channel_no, prob, recording_id=recording['id'] if recording else None,
+                           **extra)
+
+    def _collect_near_miss(self, listener, command, peak, position):
+        # The same phrase reaching a second microphone, or the tail of one that just fired, is
+        # not a near miss of its own.
+        last = self.last_fire.get(command)
+        if last is not None and time.monotonic() - last < max(self.gate.dedup_s, 3.0):
+            return
+        self._collect(listener, KIND_NEAR_MISS, command, peak, position)
+
+    def flush_samples(self, final=False):
+        """Writes collected clips to disk - only while nothing records or plays back (or when
+        shutting down, rather than losing them)."""
+        if final:
+            self.collector.finish()
+        if not self.collector.pending_count() or (self.busy and not final):
+            return
+        folder = self.config.get('samples_path')
+        if not folder:
+            return  # storage not available right now - keep them in memory for now
+        try:
+            written = self.collector.flush(folder)
+            if written:
+                removed = enforce_disk_limit(folder, int(self.config.get('samples_max_mb') or 500) * 1024 * 1024)
+                logger.info('%d Sprachbeispiel(e) gespeichert%s', written,
+                            f', {removed} alte entfernt' if removed else '')
+        except OSError as e:
+            logger.warning('saving samples failed: %s', e)
 
     def run(self, should_run):
         self._release_taps()
@@ -320,6 +396,7 @@ class Worker:
                     self.error = str(e)
                     self.state = 'Fehler'
                     logger.warning('refresh failed: %s', e)
+                self.flush_samples()
                 self.write_status()
             if not self.listeners:
                 time.sleep(0.5)
@@ -333,6 +410,7 @@ class Worker:
                     except (BlockingIOError, InterruptedError):
                         break
                     self.handle_packet(by_sock[sock], data)
+        self.flush_samples(final=True)
         self._sync_listeners([])
         self.state = 'beendet'
         self.write_status()
