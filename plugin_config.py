@@ -85,7 +85,7 @@ def get_config_values():
     folder = sample_store.samples_dir()
     values.update(install_status=supervisor.install_status_text(), worker_status=_status_text(),
                   recent=_recent_text(), samples_path=str(folder) if folder else "",
-                  samples_review=f"/plugins/{supervisor.APP_NAME}/samples/" if folder and folder.is_dir() else "")
+                  samples_review=f"/plugins/{supervisor.APP_NAME}/samples/" if folder else "")
     return values
 
 
