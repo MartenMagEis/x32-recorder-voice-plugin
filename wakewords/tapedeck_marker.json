@@ -6,7 +6,7 @@
   "trained_languages": [
     "en"
   ],
-  "version": 2,
+  "version": 3,
   "micro": {
     "probability_cutoff": 0.95,
     "sliding_window_size": 10,
