@@ -56,8 +56,7 @@ class VoiceTemplateSettings(models.Model):
         "Sprachsteuerung", default=False,
         help_text="Befehle per Sprache: Start, Stopp, Marker, Nächster Song."
     )
-    channel_no = models.IntegerField(
-        "Sprach-Kanal", null=True, blank=True, default=None,
-        help_text="Mikrofon, in das die Befehle gesprochen werden (z.B. ein Gesangs- oder "
-                   "Talkback-Mikro)."
+    channels = models.JSONField(
+        "Sprach-Kanäle", default=list, blank=True,
+        help_text="Mikrofone, in die Befehle gesprochen werden (Kanalnummern, höchstens 4)."
     )

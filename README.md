@@ -33,7 +33,11 @@ gesprochen wurde.
    Installation nötig.
 3. Im **Vorlagen-Editor** bei den gewünschten Vorlagen "Sprachsteuerung" einschalten und den
    **Sprach-Kanal** wählen (das Mikrofon, in das die Befehle gesprochen werden - bei Stereo-Paaren
-   ist jede Seite einzeln wählbar).
+   ist jede Seite einzeln wählbar). Bis zu drei weitere Kanäle sind möglich, z.B. für mehrere
+   Sänger - aber nicht übertreiben: jeder Kanal kostet auf dem Pi 3B gut 10 % eines CPU-Kerns, und
+   jedes weitere Mikro hört mehr Gesang mit, was Fehlauslöser wahrscheinlicher macht. Kommt eine
+   Ansage über zwei Mikros an, zählt sie trotzdem nur einmal (auch nicht als Bestätigung für
+   "Stopp").
 
 Zugehört wird während einer Aufnahme und - wenn "Auch ohne laufende Aufnahme zuhören" an ist - auch
 dazwischen, auf dem Audiogerät der letzten Aufnahme. Während des Zurückspielens ins Pult gibt es
@@ -60,7 +64,8 @@ verschieden, keine Wörter, die in euren Songtexten vorkommen.
   Vorlagen-Editor (`plugin_template_config.py`), Installation und Überwachung des Workers
   (`supervisor.py`).
 - **Worker** (`voice_worker/`, eigener Prozess mit niedriger Priorität, ohne Django): fordert beim
-  Controller den Sprach-Kanal per Audio-Abgriff an (`/api/audio-taps/`), taktet von 48 auf 16 kHz
+  Controller jeden Sprach-Kanal per eigenem Audio-Abgriff an (`/api/audio-taps/`, ein UDP-Port pro
+  Kanal ab dem eingestellten Port), taktet von 48 auf 16 kHz
   herunter (mit Tiefpass), lässt die Modelle laufen und löst die Befehle über die REST-API aus
   (`/recordings/start_from_template/`, `/stop/`, `/marker_action/`).
 

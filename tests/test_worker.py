@@ -139,5 +139,71 @@ class IdleDeviceTests(unittest.TestCase):
         self.assertEqual(self.worker._idle_device(), 1)
 
 
+class TapApi:
+    """Answers the calls Worker.refresh makes; records audio-tap requests."""
+
+    def __init__(self, channels, active=None):
+        self.channels = channels
+        self.active = active
+        self.taps = {}
+
+    def plugin_config(self, plugin):
+        return {'enabled': True, 'model_marker': 'okay_nabu', 'udp_port': 47910, 'listen_while_idle': False}
+
+    def active_recording(self):
+        return self.active
+
+    def template_config(self, plugin, template_id):
+        return {'enabled': True, 'channels': self.channels}
+
+    def get(self, path):
+        if path == '/recorder-settings/':
+            return {'last_template': 7}
+        if path.startswith('/templates/'):
+            return {'name': 'Combo'}
+        raise AssertionError(path)
+
+    def put(self, path, data):
+        self.taps[path.split('/')[2]] = data
+
+    def delete(self, path):
+        self.taps.pop(path.split('/')[2], None)
+
+
+class ChannelTests(unittest.TestCase):
+    def setUp(self):
+        try:
+            from voice_worker import main
+        except ImportError:
+            raise unittest.SkipTest('needs pymicro-wakeword')
+        self.api = TapApi([15, 13])
+        self.worker = main.Worker(self.api, 'voice', '.', 'status.json')
+
+    def tearDown(self):
+        self.worker._sync_listeners([])
+
+    def test_one_tap_and_port_per_channel(self):
+        self.worker.refresh()
+        self.assertEqual(self.api.taps, {
+            'voice': {'channel_no': 15, 'udp_port': 47910, 'device_index': None},
+            'voice-2': {'channel_no': 13, 'udp_port': 47911, 'device_index': None},
+        })
+        self.assertEqual(self.worker.state, 'hört zu')
+
+    def test_dropped_channel_gives_its_tap_back(self):
+        self.worker.refresh()
+        self.api.channels = [13]
+        self.worker.refresh()
+        self.assertEqual(self.api.taps, {'voice': {'channel_no': 13, 'udp_port': 47910, 'device_index': None}})
+        self.assertEqual(len(self.worker.listeners), 1)
+
+    def test_playback_pauses_commands(self):
+        self.api.active = {'state': 4, 'template': 7}
+        self.worker.refresh()
+        self.assertIsNone(self.worker.target['recording'])
+        self.assertTrue(self.worker.busy)
+        self.assertEqual(self.worker.state, 'pausiert (Wiedergabe läuft)')
+
+
 if __name__ == '__main__':
     unittest.main()

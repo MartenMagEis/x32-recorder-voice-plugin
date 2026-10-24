@@ -20,24 +20,37 @@ class TemplateSettingsTests(TestCase):
         url = "/api/plugins/template-config/" + (f"?template_id={template_id}" if template_id else "")
         return next(b for b in self.client.get(url).json()["plugins"] if b["plugin"] == "x32_recorder_voice_plugin")
 
-    def test_shows_up_in_template_editor_with_channel_field(self):
+    def test_shows_up_in_template_editor_with_four_channel_fields(self):
         block = self.block()
         self.assertEqual(block["title"], "Sprachsteuerung")
-        self.assertEqual({f["name"]: f["type"] for f in block["fields"]}, {"enabled": "bool", "channel_no": "channel"})
-        self.assertEqual(block["values"], {"enabled": False, "channel_no": None})
+        self.assertEqual({f["name"]: f["type"] for f in block["fields"]}, {
+            "enabled": "bool", "channel_1": "channel", "channel_2": "channel",
+            "channel_3": "channel", "channel_4": "channel",
+        })
+        self.assertEqual(block["values"], {
+            "enabled": False, "channel_1": None, "channel_2": None, "channel_3": None,
+            "channel_4": None, "channels": [],
+        })
+
+    def save(self, **data):
+        url = f"/api/plugins/template-config/{self.template.id}/x32_recorder_voice_plugin/"
+        return self.client.patch(url, data=json.dumps(data), content_type="application/json")
 
     def test_save_and_validation(self):
-        url = f"/api/plugins/template-config/{self.template.id}/x32_recorder_voice_plugin/"
-        bad = self.client.patch(url, data=json.dumps({"enabled": True, "channel_no": None}),
-                                content_type="application/json")
-        self.assertEqual(bad.status_code, 400)
-        ok = self.client.patch(url, data=json.dumps({"enabled": True, "channel_no": 15}),
-                               content_type="application/json")
-        self.assertEqual(ok.status_code, 200)
-        self.assertEqual(self.block(self.template.id)["values"], {"enabled": True, "channel_no": 15})
+        self.assertEqual(self.save(enabled=True, channel_1=None).status_code, 400)
+        self.assertEqual(self.save(enabled=True, channel_1=15).status_code, 200)
+        values = self.block(self.template.id)["values"]
+        self.assertEqual((values["enabled"], values["channel_1"], values["channels"]), (True, 15, [15]))
+
+    def test_several_channels_without_gaps_or_duplicates(self):
+        self.assertEqual(self.save(enabled=True, channel_1=None, channel_2=14, channel_3=15,
+                                   channel_4=14).status_code, 200)
+        values = self.block(self.template.id)["values"]
+        self.assertEqual(values["channels"], [14, 15])
+        self.assertEqual((values["channel_1"], values["channel_2"], values["channel_3"]), (14, 15, None))
 
     def test_settings_removed_with_template(self):
-        VoiceTemplateSettings.objects.create(template=self.template, enabled=True, channel_no=3)
+        VoiceTemplateSettings.objects.create(template=self.template, enabled=True, channels=[3])
         self.template.delete()
         self.assertFalse(VoiceTemplateSettings.objects.exists())
 

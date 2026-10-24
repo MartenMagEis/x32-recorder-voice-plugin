@@ -38,7 +38,8 @@ def _status_text():
         return "Worker läuft nicht"
     text = f"{status.get('state')} (Stand {status.get('updated', '?')[11:]})"
     if status.get("template"):
-        text += f" - Vorlage '{status['template']}', Kanal {status.get('channel_no')}"
+        channels = ", ".join(str(c) for c in status.get("channels") or [])
+        text += f" - Vorlage '{status['template']}', Kanal {channels}"
     if status.get("error"):
         text += f" - Fehler: {status['error']}"
     return text
