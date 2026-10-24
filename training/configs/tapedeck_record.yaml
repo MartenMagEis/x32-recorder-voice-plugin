@@ -4,7 +4,7 @@ model_name: tapedeck_record
 wake_word: "Tape deck, record"
 author: MartenMagEis
 trained_languages: ["en"]
-version: 1
+version: 2
 train_with_recordings: false
 
 # Satzzeichen-Varianten geben der TTS andere Betonung und Pausenlänge.

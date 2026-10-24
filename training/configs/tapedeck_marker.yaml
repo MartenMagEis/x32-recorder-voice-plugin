@@ -4,7 +4,7 @@ model_name: tapedeck_marker
 wake_word: "Tape deck, marker"
 author: MartenMagEis
 trained_languages: ["en"]
-version: 2
+version: 3
 train_with_recordings: false
 
 # Satzzeichen-Varianten geben der TTS andere Betonung und Pausenlänge.
@@ -122,7 +122,7 @@ microwakeword:
   first_conv_kernel_size: 5
   stride: 3
   spectrogram_length: 204
-  training_steps: 10000
+  training_steps: 20000
   batch_size: 128
   learning_rate: 0.001
   positive_class_weight: 1.5

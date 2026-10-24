@@ -149,4 +149,45 @@ du lange Läufe startest.
 
 ## Trainings-Protokoll
 
-(noch leer)
+### Stand 2026-10-24 - alle vier Modelle ausgeliefert
+
+| Modell | Version | Schwelle | Fehlauslöser/h (10,4 h Probe) | Erkennung TTS | echte Ansagen | Verwechslung mit anderen Befehlen |
+|---|---|---|---|---|---|---|
+| `tapedeck_record` | 2 | 0,93 | 0,00 | 100 % | - | 0/900 |
+| `tapedeck_finish` | 1 | 0,90 | 0,29 (Doppel-Ansage-Sicherung!) | 99 % | - | 1/900 |
+| `tapedeck_marker` | 3 | 0,95 | 0,10 | 99 % | 4/4 (Marten, 19.10.) | 0/900 |
+| `tapedeck_next_song` | 2 | 0,95 | 0,10 | 100 % | - | 2/900 |
+
+**Gemeinsame Einstellungen** (Details in `configs/<modell>.yaml`, Trainer-Änderungen in `trainer.patch`):
+interkelstar/microwakeword-trainer 8fdbadc + Patch, microWakeWord a70bd74, TF 2.21, mixednet
+(Standard-Architektur), 15 000 + 3 000 Piper-Clips aus 9 englischen Stimmen (libritts_r und vctk mit
+zufälligem Sprecher), Raumhall (MIT-RIRs) + Probenaudio als Hintergrund (SNR 3-25 dB), Negative:
+Befehls-ähnliche Phrasen + 24,2 h Probenaudio (Fenster je 1 s) + 100k allgemeine Fenster
+(kahrendt/microwakeword); positive_class_weight 1,5, sliding_window 10.
+
+**Durchlauf 2** (`refine_model.sh`): Fehlauslöser des Vormodells auf dem *Trainings*anteil des
+Probenaudios (Schwelle 0,7) als dichte `user_negatives`, plus TTS-Clips der jeweils anderen drei
+Befehle als Negative (bis 500 knappe + 150 zufällige je Befehl). Bei record, marker (v2->v3) und
+next_song ein klarer Gewinn; bei finish nicht (v2 mit 10k Schritten 1,8/h, mit 20k 0,86/h), daher
+finish v1. Schritte: record 10 000, finish 10 000, marker v3 und next_song v2 20 000 (mit 10 000
+blieb das größere Datenset untertrainiert - beste Epoche war jeweils die letzte).
+
+**Datenaufteilung:** nach ganzen Aufnahmen, zurückgehalten rec78, rec92, rec94 (10,4 h, beide
+Besetzungen); `prepare_data.sh`. Echte Ansagen: `~/wakeword_data/positives_real/<modell>/`.
+
+**Messfallen** (beim nächsten Mal beachten):
+- Die ersten ~0,5 s nach Start des Frontends sind unbrauchbar (bis 0,99 auf Bandaudio) - evaluate.py
+  zählt die ersten 2 s nicht, der Detektor im Plugin löst in den ersten 2 s nach einem Reset nicht aus.
+- Clips in digitaler Stille (Nullen) bewerten die Modelle anders als in Raumrauschen: next_song v2
+  schien mit Null-Polsterung 15 % der anderen Befehle zu erkennen, in Raumrauschen 0-0,7 %.
+  `cross_check.py --beds <heldout>` polstert deshalb mit echtem Raumklang. Falls der Abgriff am X32
+  hinter Gate/Mute sitzt, kommen live tatsächlich Nullen - dann im Betrieb beobachten.
+- Die Fehlauslöser-Rate schwankt stark zwischen Proben (marker v1: 0,48/h auf dem Prüfanteil, 1,57/h
+  auf dem Trainingsanteil). 10 h Prüfaudio lösen 0,1/h nur grob auf (= 1 Ereignis).
+- Zwei Trainings gleichzeitig: beide lesen ~12 GB per mmap, der Rechner hat 15 GB - dann 500-800 ms
+  statt ~30 ms pro Schritt. Immer nacheinander.
+- Windows Update hat einen Lauf per automatischem Neustart abgebrochen: Updates während des
+  Trainings pausieren.
+
+**Offen:** echte Ansagen für record, finish und next song aufnehmen (siehe oben) und damit die
+Erkennung messen; finish ggf. mit weniger Verwechslungs-Negativen erneut versuchen.
